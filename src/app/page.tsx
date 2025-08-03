@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { ref, onValue, set } from "firebase/database";
+import { ref, onValue, set, get } from "firebase/database";
 import { db } from "@/firebase";
 import { getAuth, onAuthStateChanged, User } from "firebase/auth";
 import { useRouter } from "next/navigation";
@@ -81,16 +81,46 @@ function usePomodoro(initial = 25 * 60) {
   };
 }
 
-// Enhanced streak calculation with proper logic
+// Enhanced streak calculation with automatic daily increase and 4-day reset logic
 function calculateStreak(subjects: any[], user: User | null) {
   if (!subjects.length || !user) return 0;
   
   const today = todayISO();
+  const todayDate = new Date(today);
   let streak = 0;
-  let currentDate = new Date(today);
+  let lastActivityDate = null;
   
-  // Check backwards from today
-  while (true) {
+  // Find the last activity date
+  for (const subject of subjects) {
+    if (subject.topics && subject.topics.length > 0) {
+      for (const topic of subject.topics) {
+        if (topic.completed && topic.completedDate) {
+          const activityDate = new Date(topic.completedDate);
+          if (!lastActivityDate || activityDate > lastActivityDate) {
+            lastActivityDate = activityDate;
+          }
+        }
+      }
+    }
+  }
+  
+  // If no activity found, streak is 0
+  if (!lastActivityDate) return 0;
+  
+  // Calculate days since last activity
+  const daysSinceLastActivity = Math.floor((todayDate.getTime() - lastActivityDate.getTime()) / (1000 * 60 * 60 * 24));
+  
+  // If more than 4 days of inactivity, reset streak
+  if (daysSinceLastActivity > 4) {
+    return 0;
+  }
+  
+  // Calculate streak by counting consecutive days with activity
+  let currentDate = new Date(lastActivityDate);
+  let consecutiveDays = 0;
+  
+  // Count backwards from last activity date
+  while (consecutiveDays < 365) { // Prevent infinite loop
     const dateStr = currentDate.toISOString().slice(0, 10);
     let hasStudiedToday = false;
     
@@ -108,21 +138,34 @@ function calculateStreak(subjects: any[], user: User | null) {
     }
     
     if (hasStudiedToday) {
-      streak++;
+      consecutiveDays++;
       currentDate.setDate(currentDate.getDate() - 1);
     } else {
-      // If it's today and no study done, streak is 0
-      if (dateStr === today) {
-        streak = 0;
-      }
       break;
     }
-    
-    // Prevent infinite loop
-    if (streak > 365) break;
   }
   
-  return streak;
+  return consecutiveDays;
+}
+
+// Function to get last activity date
+function getLastActivityDate(subjects: any[]) {
+  let lastActivityDate = null;
+  
+  for (const subject of subjects) {
+    if (subject.topics && subject.topics.length > 0) {
+      for (const topic of subject.topics) {
+        if (topic.completed && topic.completedDate) {
+          const activityDate = new Date(topic.completedDate);
+          if (!lastActivityDate || activityDate > lastActivityDate) {
+            lastActivityDate = activityDate;
+          }
+        }
+      }
+    }
+  }
+  
+  return lastActivityDate;
 }
 
 export default function Home() {
@@ -154,6 +197,13 @@ export default function Home() {
     return () => unsubscribe();
   }, [router]);
 
+  // Request notification permission for streak alerts
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
   // Fetch user profile
   useEffect(() => {
     if (!user) return;
@@ -183,6 +233,65 @@ export default function Home() {
     });
     return () => unsubSubjects();
   }, [user]);
+
+  // Automatic streak management - runs daily
+  useEffect(() => {
+    if (!user) return;
+    
+    const checkAndUpdateStreak = async () => {
+      const today = todayISO();
+      const streakRef = ref(db, `users/${user.uid}/streak`);
+      const lastUpdateRef = ref(db, `users/${user.uid}/lastStreakUpdate`);
+      
+      // Get last update date
+      const lastUpdateSnapshot = await get(lastUpdateRef);
+      const lastUpdateDate = lastUpdateSnapshot.val();
+      
+      // If no last update or it's a new day, update streak
+      if (!lastUpdateDate || lastUpdateDate !== today) {
+        const calculatedStreak = calculateStreak(subjects, user);
+        
+        // Update streak and last update date
+        await Promise.all([
+          set(streakRef, calculatedStreak),
+          set(lastUpdateRef, today)
+        ]);
+        
+        setStreak(calculatedStreak);
+      }
+    };
+    
+    // Check streak on component mount
+    checkAndUpdateStreak();
+    
+    // Set up daily check (every hour to be safe)
+    const interval = setInterval(checkAndUpdateStreak, 60 * 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, [user, subjects]);
+
+  // Streak notification system
+  useEffect(() => {
+    if (!user || subjects.length === 0) return;
+    
+    const lastActivity = getLastActivityDate(subjects);
+    if (lastActivity) {
+      const today = new Date(todayISO());
+      const daysSinceLastActivity = Math.floor((today.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24));
+      const daysRemaining = 4 - daysSinceLastActivity;
+      
+      // Show notification if streak is about to reset
+      if (daysRemaining <= 2 && daysRemaining > 0) {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('Streak Alert! 🔥', {
+            body: `Your ${streak}-day streak will reset in ${daysRemaining} day${daysRemaining > 1 ? 's' : ''}! Study today to keep it alive!`,
+            icon: '/fire-icon.png',
+            tag: 'streak-alert'
+          });
+        }
+      }
+    }
+  }, [user, subjects, streak]);
 
   // Break timer effect
   useEffect(() => {
@@ -321,6 +430,30 @@ export default function Home() {
                 </div>
               </div>
             )}
+            {(() => {
+              const lastActivity = getLastActivityDate(subjects);
+              if (lastActivity) {
+                const today = new Date(todayISO());
+                const daysSinceLastActivity = Math.floor((today.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24));
+                const daysRemaining = 4 - daysSinceLastActivity;
+                
+                return (
+                  <div className="text-xs text-gray-400 mt-3">
+                    <div>Last activity: {lastActivity.toLocaleDateString()}</div>
+                    {daysRemaining > 0 ? (
+                      <div className="text-yellow-400">⚠️ {daysRemaining} day{daysRemaining > 1 ? 's' : ''} left before reset</div>
+                    ) : (
+                      <div className="text-red-400">⚠️ Streak will reset soon!</div>
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <div className="text-xs text-gray-400 mt-3">
+                  ⚠️ Streak resets after 4 days of inactivity
+                </div>
+              );
+            })()}
           </div>
         </div>
 
