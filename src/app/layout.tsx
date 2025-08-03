@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Link from "next/link";
-import { FiHome, FiClipboard, FiAward, FiSettings, FiBarChart2 } from "react-icons/fi";
+import { FiHome, FiClipboard, FiAward, FiSettings, FiBarChart2, FiCalendar } from "react-icons/fi";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -19,6 +19,7 @@ const navItems = [
   { href: '/tasks', icon: FiClipboard, label: 'Tasks', highlight: true },
   { href: '/daily-test', icon: FiClipboard, label: 'Daily Test' },
   { href: '/flash-cards', icon: FiAward, label: 'Flash Cards', highlight: true },
+  { href: '/current-affairs', icon: FiCalendar, label: 'Current Affairs' },
   { href: '/analytics', icon: FiBarChart2, label: 'Analytics' },
   { href: '/settings', icon: FiSettings, label: 'Settings' },
 ];

@@ -4,6 +4,43 @@ import { ref, onValue, set } from "firebase/database";
 import { db } from "@/firebase";
 import { getAuth, onAuthStateChanged, User } from "firebase/auth";
 import { useRouter } from "next/navigation";
+import { FiHome, FiClipboard, FiAward, FiSettings, FiBarChart2, FiCalendar, FiClock, FiTarget, FiTrendingUp } from "react-icons/fi";
+
+// Daily quotes in Hindi
+const dailyQuotes = [
+  {
+    quote: "सफलता का रहस्य यह है कि आप जो कर रहे हैं उसे पूरी तरह से करें।",
+    author: "स्वामी विवेकानंद"
+  },
+  {
+    quote: "जीवन में सबसे बड़ी गलती डर के कारण प्रयास न करना है।",
+    author: "महात्मा गांधी"
+  },
+  {
+    quote: "शिक्षा सबसे शक्तिशाली हथियार है जिसका उपयोग आप दुनिया को बदलने के लिए कर सकते हैं।",
+    author: "नेल्सन मंडेला"
+  },
+  {
+    quote: "अपने सपनों को पूरा करने के लिए आपको अपनी आराम क्षेत्र से बाहर निकलना होगा।",
+    author: "डॉ. ए.पी.जे. अब्दुल कलाम"
+  },
+  {
+    quote: "हारने का डर जीतने की इच्छा से कहीं ज्यादा शक्तिशाली है।",
+    author: "रॉबर्ट कियोसाकी"
+  },
+  {
+    quote: "सफलता कोई दुर्घटना नहीं है, यह कड़ी मेहनत, दृढ़ता, सीखने, बलिदान और सबसे बढ़कर, जो आप कर रहे हैं उससे प्यार करने का परिणाम है।",
+    author: "पेले"
+  },
+  {
+    quote: "जीवन में सबसे महत्वपूर्ण बात यह है कि आप क्या सीखते हैं और कैसे बढ़ते हैं।",
+    author: "माया एंजेलो"
+  },
+  {
+    quote: "आपका भविष्य आपके आज के फैसलों पर निर्भर करता है।",
+    author: "अब्राहम लिंकन"
+  }
+];
 
 function daysBetween(date1: string, date2: string) {
   const d1 = new Date(date1);
@@ -98,6 +135,11 @@ export default function Home() {
   const [breakTimer, setBreakTimer] = useState(300);
   const [breakActive, setBreakActive] = useState(false);
   const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
+  
+  // Get today's quote based on date
+  const currentDate = new Date();
+  const quoteIndex = currentDate.getDate() % dailyQuotes.length;
+  const todaysQuote = dailyQuotes[quoteIndex];
 
   // Auth check
   useEffect(() => {
@@ -184,11 +226,11 @@ export default function Home() {
     
     const updatedTopics = [...subject.topics];
     const topic = updatedTopics[topicIndex];
-    const today = todayISO();
+    const todayDate = todayISO();
     
     // Toggle completion status
     topic.completed = !topic.completed;
-    topic.completedDate = topic.completed ? today : null;
+    topic.completedDate = topic.completed ? todayDate : null;
     topic.completedAt = topic.completed ? Date.now() : null;
     
     // Update in Firebase
@@ -216,14 +258,14 @@ export default function Home() {
 
   if (!user) return null;
 
-  const today = todayISO();
+  const todayDate = todayISO();
   const activeSubjects = subjects.filter(
-    (s) => today >= s.startDate && today <= s.endDate
+    (s) => todayDate >= s.startDate && todayDate <= s.endDate
   );
   
   let daysToExam = null;
   if (profile.examDate) {
-    daysToExam = daysBetween(today, profile.examDate);
+    daysToExam = daysBetween(todayDate, profile.examDate);
   }
 
   return (
@@ -326,9 +368,9 @@ export default function Home() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {activeSubjects.map((subject, index) => {
           const totalDays = daysBetween(subject.startDate, subject.endDate);
-          const passedDays = daysBetween(subject.startDate, today);
+          const passedDays = daysBetween(subject.startDate, todayDate);
           const progress = Math.min(100, Math.round((passedDays / totalDays) * 100));
-          const daysLeft = daysBetween(today, subject.endDate);
+          const daysLeft = daysBetween(todayDate, subject.endDate);
           const getISTDate = () => {
             const now = new Date();
             const istOffset = 5.5 * 60;
@@ -336,8 +378,8 @@ export default function Home() {
             return new Date(utc + istOffset * 60000);
           };
           const nowIST = getISTDate();
-          const startDateTime = new Date(`${today}T${subject.start}`);
-          const endDateTime = new Date(`${today}T${subject.end}`);
+          const startDateTime = new Date(`${todayDate}T${subject.start}`);
+          const endDateTime = new Date(`${todayDate}T${subject.end}`);
           let hourProgress = 0;
           if (nowIST < startDateTime) hourProgress = 0;
           else if (nowIST > endDateTime) hourProgress = 100;
@@ -414,8 +456,8 @@ export default function Home() {
                 </h4>
                 <div className="space-y-3">
                   {(() => {
-                    const completedTopics = topics.filter((t: any) => t.completed && t.completedDate === today);
-                    const pendingTopics = topics.filter((t: any) => !t.completed || t.completedDate !== today);
+                    const completedTopics = topics.filter((t: any) => t.completed && t.completedDate === todayDate);
+                    const pendingTopics = topics.filter((t: any) => !t.completed || t.completedDate !== todayDate);
                     
                     // Get last completed topic
                     const lastCompleted = completedTopics.length > 0 ? completedTopics[completedTopics.length - 1] : null;
@@ -505,7 +547,7 @@ export default function Home() {
                   <h5 className="font-semibold text-white mb-3">All Topics</h5>
                   <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto">
                     {subject.topics?.map((topic: any, tIdx: number) => {
-                      const isCompleted = topic.completed && topic.completedDate === today;
+                      const isCompleted = topic.completed && topic.completedDate === todayDate;
                       
                       return (
                         <div key={topic.name} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors">
